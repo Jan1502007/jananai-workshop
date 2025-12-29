@@ -20,7 +20,7 @@ def calculate_total(items):
 # -----------------------------
 @app.route("/")
 def home():
-    return jsonify({"message": "AI Billing System Backend Running"})
+    return jsonify({"message": "AI Billing System Running"})
 
 
 # -----------------------------
