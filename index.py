@@ -4,12 +4,19 @@ import time
 app = Flask(__name__)
 
 # -----------------------------
-# In-memory order storage
+# In-memory DB
 # -----------------------------
 orders = {}
 
 # -----------------------------
-# Home route
+# Utility: calculate total
+# -----------------------------
+def calculate_total(items):
+    return sum(i["price"] * i["qty"] for i in items)
+
+
+# -----------------------------
+# Home
 # -----------------------------
 @app.route("/")
 def home():
@@ -24,14 +31,17 @@ def create_order():
     data = request.json
     items = data.get("items", [])
 
-    total = sum(item["price"] * item["qty"] for item in items)
+    # validation
+    for item in items:
+        if item["qty"] <= 0 or item["price"] <= 0:
+            return jsonify({"error": "Invalid price or quantity"}), 400
 
-    order_id = str(int(time.time() * 1000))  # unique id
+    order_id = str(int(time.time() * 1000))
 
     orders[order_id] = {
         "order_id": order_id,
         "items": items,
-        "total": total,
+        "total": calculate_total(items),
         "status": "PENDING"
     }
 
@@ -49,33 +59,49 @@ def get_order(order_id):
 
 
 # -----------------------------
-# AI Agent – Modify Bill
+# AI Agent – Smart Modify Bill
 # -----------------------------
 @app.route("/ai-agent", methods=["POST"])
 def ai_agent():
     data = request.json
     order_id = data.get("order_id")
-    action = data.get("action")  # add / remove
+    action = data.get("action")  # add / remove / increment / decrement
     item = data.get("item")
 
     if order_id not in orders:
         return jsonify({"error": "Order not found"}), 404
 
     order = orders[order_id]
+    items = order["items"]
+
+    # find item
+    existing = next((i for i in items if i["name"] == item["name"]), None)
 
     if action == "add":
-        order["items"].append(item)
+        if existing:
+            existing["qty"] += item["qty"]
+        else:
+            items.append(item)
 
-    elif action == "remove":
-        order["items"] = [
-            i for i in order["items"] if i["name"] != item["name"]
-        ]
+    elif action == "increment" and existing:
+        existing["qty"] += 1
 
-    # Recalculate total
-    order["total"] = sum(i["price"] * i["qty"] for i in order["items"])
+    elif action == "decrement" and existing:
+        existing["qty"] -= 1
+        if existing["qty"] <= 0:
+            items.remove(existing)
+
+    elif action == "remove" and existing:
+        items.remove(existing)
+
+    else:
+        return jsonify({"error": "Invalid action or item"}), 400
+
+    # recalc total
+    order["total"] = calculate_total(items)
 
     return jsonify({
-        "message": "Order updated by AI agent",
+        "message": "Order updated successfully",
         "order": order
     })
 
@@ -93,7 +119,7 @@ def complete_order(order_id):
 
 
 # -----------------------------
-# Run Server
+# Run
 # -----------------------------
 if __name__ == "__main__":
     app.run(debug=True)
